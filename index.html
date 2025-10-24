@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Judgify - Lokal Bildsortering</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        function Judgify() {
+            const [images, setImages] = useState([]);
+            const [viewMode, setViewMode] = useState(2); // 1, 2 eller 3 bilder
+            const [bestDirection, setBestDirection] = useState('left'); // left eller right
+            const [darkMode, setDarkMode] = useState(false);
+            const [fullscreenImage, setFullscreenImage] = useState(null);
+            const [draggedIndex, setDraggedIndex] = useState(null);
+            const [selectedIndex, setSelectedIndex] = useState(0); // Vald bild i filmremsan
+            const fileInputRef = useRef(null);
+
+            // Ladda sparade bilder från sessionStorage vid start
+            useEffect(() => {
+                const saved = sessionStorage.getItem('judgify-images');
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        setImages(parsed);
+                    } catch (e) {
+                        console.error('Kunde inte ladda sparade bilder', e);
+                    }
+                }
+                
+                const savedDirection = sessionStorage.getItem('judgify-best-direction');
+                if (savedDirection) {
+                    setBestDirection(savedDirection);
+                }
+            }, []);
+
+            // Spara bilder till sessionStorage när de ändras
+            useEffect(() => {
+                if (images.length > 0) {
+                    sessionStorage.setItem('judgify-images', JSON.stringify(images));
+                } else {
+                    sessionStorage.removeItem('judgify-images');
+                }
+            }, [images]);
+            
+            // Spara bestDirection till sessionStorage när den ändras
+            useEffect(() => {
+                sessionStorage.setItem('judgify-best-direction', bestDirection);
+            }, [bestDirection]);
+            
+            // Varna användaren innan de lämnar sidan om det finns bilder
+            useEffect(() => {
+                const handleBeforeUnload = (e) => {
+                    if (images.length > 0) {
+                        e.preventDefault();
+                        e.returnValue = ''; // Modern browsers require this
+                        return ''; // Some older browsers need a return value
+                    }
+                };
+                
+                window.addEventListener('beforeunload', handleBeforeUnload);
+                return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+            }, [images]);
+
+            const handleFileSelect = (files) => {
+                const wasEmpty = images.length === 0;
+                
+                const newImages = Array.from(files).map(file => {
+                    if (!file.type.match('image.*')) return null;
+                    
+                    // Kolla om filen redan finns i nuvarande bilder (baserat på namn och storlek)
+                    const isDuplicate = images.some(img => 
+                        img.name === file.name && img.size === file.size
+                    );
+                    
+                    if (isDuplicate) {
+                        console.log(`Hoppar över duplicerad fil: ${file.name}`);
+                        return null;
+                    }
+                    
+                    return {
+                        id: crypto.randomUUID(),
+                        name: file.name,
+                        size: file.size,
+                        url: URL.createObjectURL(file),
+                        file: file
+                    };
+                }).filter(Boolean);
+
+                if (newImages.length === 0 && Array.from(files).some(f => f.type.match('image.*'))) {
+                    alert('Alla valda bilder finns redan i listan.');
+                    return;
+                }
+
+                setImages(prev => [...prev, ...newImages]);
+                
+                // Om det var tomt innan, sätt selectedIndex till 0
+                if (wasEmpty && newImages.length > 0) {
+                    setSelectedIndex(0);
+                }
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleFileSelect(e.dataTransfer.files);
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            };
+
+            const handleDragStart = (index) => {
+                setDraggedIndex(index);
+            };
+
+            const handleDragEnd = () => {
+                setDraggedIndex(null);
+            };
+
+            const handleDragOverImage = (e, index) => {
+                e.preventDefault();
+                if (draggedIndex === null || draggedIndex === index) return;
+
+                const newImages = [...images];
+                const draggedImage = newImages[draggedIndex];
+                newImages.splice(draggedIndex, 1);
+                newImages.splice(index, 0, draggedImage);
+                
+                // Uppdatera selectedIndex för att följa den valda bilden
+                if (selectedIndex === draggedIndex) {
+                    setSelectedIndex(index);
+                } else if (draggedIndex < selectedIndex && index >= selectedIndex) {
+                    setSelectedIndex(selectedIndex - 1);
+                } else if (draggedIndex > selectedIndex && index <= selectedIndex) {
+                    setSelectedIndex(selectedIndex + 1);
+                }
+                
+                setImages(newImages);
+                setDraggedIndex(index);
+            };
+
+            const exportOrder = () => {
+                const orderText = images.map((img, i) => `${i + 1}. ${img.name}`).join('\n');
+                const blob = new Blob([orderText], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `judgify-rangordning-${new Date().toISOString().split('T')[0]}.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const clearAll = () => {
+                if (confirm('Är du säker på att du vill ta bort alla bilder?')) {
+                    images.forEach(img => URL.revokeObjectURL(img.url));
+                    setImages([]);
+                    setSelectedIndex(0);
+                    setBestDirection('left');
+                    sessionStorage.removeItem('judgify-images');
+                    sessionStorage.removeItem('judgify-best-direction');
+                }
+            };
+
+            const removeImage = (imageId, e) => {
+                e.stopPropagation();
+                const imageToRemove = images.find(img => img.id === imageId);
+                if (imageToRemove) {
+                    URL.revokeObjectURL(imageToRemove.url);
+                    const removedIndex = images.findIndex(img => img.id === imageId);
+                    setImages(prev => prev.filter(img => img.id !== imageId));
+                    
+                    // Justera selectedIndex om nödvändigt
+                    if (selectedIndex >= images.length - 1) {
+                        setSelectedIndex(Math.max(0, images.length - 2));
+                    } else if (removedIndex <= selectedIndex) {
+                        setSelectedIndex(Math.max(0, selectedIndex - 1));
+                    }
+                }
+            };
+
+            // Tangentbordsnavigering i fullskärm
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if (fullscreenImage === null) return;
+
+                    if (e.key === 'Escape') {
+                        setFullscreenImage(null);
+                    } else if (e.key === 'ArrowLeft') {
+                        const currentIndex = images.findIndex(img => img.id === fullscreenImage);
+                        if (currentIndex > 0) {
+                            setFullscreenImage(images[currentIndex - 1].id);
+                        }
+                    } else if (e.key === 'ArrowRight') {
+                        const currentIndex = images.findIndex(img => img.id === fullscreenImage);
+                        if (currentIndex < images.length - 1) {
+                            setFullscreenImage(images[currentIndex + 1].id);
+                        }
+                    }
+                };
+
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [fullscreenImage, images]);
+
+            const displayImages = bestDirection === 'right' ? [...images].reverse() : images;
+
+            // Beräkna vilka bilder som ska visas i huvudvyn baserat på vald bild och viewMode
+            const getMainViewImages = () => {
+                if (images.length === 0) return [];
+                
+                const validIndex = Math.min(selectedIndex, images.length - 1);
+                
+                let result = [];
+                
+                if (viewMode === 'all') {
+                    // Visa alla bilder
+                    result = images.map((img, idx) => ({ image: img, index: idx }));
+                } else if (viewMode === 1) {
+                    // Visa bara den valda bilden
+                    result = [{ image: images[validIndex], index: validIndex }];
+                } else if (viewMode === 2) {
+                    // Visa den valda + den under
+                    result = [{ image: images[validIndex], index: validIndex }];
+                    if (validIndex + 1 < images.length) {
+                        result.push({ image: images[validIndex + 1], index: validIndex + 1 });
+                    }
+                } else { // viewMode === 3
+                    // Visa den över + valda + den under
+                    if (validIndex > 0) {
+                        result.push({ image: images[validIndex - 1], index: validIndex - 1 });
+                    }
+                    result.push({ image: images[validIndex], index: validIndex });
+                    if (validIndex + 1 < images.length) {
+                        result.push({ image: images[validIndex + 1], index: validIndex + 1 });
+                    }
+                }
+                
+                // Om bestDirection är 'right', vänd ordningen så bäst visas till höger
+                if (bestDirection === 'right') {
+                    result.reverse();
+                }
+                
+                return result;
+            };
+
+            const mainViewImages = getMainViewImages();
+            
+            // Beräkna antal kolumner dynamiskt baserat på antal bilder
+            const getGridCols = () => {
+                if (viewMode === 'all') {
+                    const count = images.length;
+                    if (count <= 6) return 'grid-cols-3';
+                    if (count <= 12) return 'grid-cols-4';
+                    if (count <= 20) return 'grid-cols-5';
+                    if (count <= 30) return 'grid-cols-6';
+                    return 'grid-cols-8';
+                } else if (viewMode === 1) {
+                    return 'grid-cols-1';
+                } else if (viewMode === 2) {
+                    return 'grid-cols-1 md:grid-cols-2';
+                } else {
+                    return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3';
+                }
+            };
+
+            if (images.length === 0) {
+                return (
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-8">
+                        <div className="max-w-2xl w-full">
+                            <h1 className="text-4xl font-bold text-center mb-8 text-gray-800">
+                                Judgify Local
+                            </h1>
+                            
+                            {/* Välj bäst-riktning */}
+                            <div className="mb-6 text-center">
+                                <label className="block text-lg font-medium text-gray-700 mb-3">
+                                    Vart ska bästa bilden visas?
+                                </label>
+                                <div className="flex items-center justify-center gap-4">
+                                    {[
+                                        { value: 'left', label: '← Vänster', desc: 'Bäst till vänster' },
+                                        { value: 'right', label: 'Höger →', desc: 'Bäst till höger' }
+                                    ].map(dir => (
+                                        <button
+                                            key={dir.value}
+                                            onClick={() => setBestDirection(dir.value)}
+                                            className={`px-6 py-4 rounded-lg border-2 transition-all ${
+                                                bestDirection === dir.value 
+                                                    ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                                                    : 'border-gray-300 bg-white text-gray-700 hover:border-blue-300'
+                                            }`}
+                                        >
+                                            <div className="text-2xl mb-1">{dir.label}</div>
+                                            <div className="text-sm">{dir.desc}</div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            <div 
+                                className="border-4 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-blue-500 transition-colors cursor-pointer"
+                                onDrop={handleDrop}
+                                onDragOver={handleDragOver}
+                                onClick={() => fileInputRef.current?.click()}
+                            >
+                                <svg className="mx-auto h-24 w-24 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                                <p className="text-xl text-gray-600 mb-2">
+                                    Dra och släpp bilder här
+                                </p>
+                                <p className="text-gray-500">
+                                    eller klicka för att välja filer
+                                </p>
+                                <p className="text-sm text-gray-400 mt-4">
+                                    Alla bilder hanteras lokalt i din webbläsare
+                                </p>
+                                <p className="text-xs text-gray-400 mt-2">
+                                    Format: JPG, PNG, GIF, WebP, AVIF, BMP, SVG
+                                </p>
+                            </div>
+                            
+                            {/* Info box */}
+                            <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                <div className="flex items-start gap-3">
+                                    <span className="text-2xl">⚠️</span>
+                                    <div className="text-sm text-yellow-800">
+                                        <p className="font-semibold mb-1">Viktigt att veta:</p>
+                                        <p>Bilderna lagras endast temporärt i webbläsaren. Om du uppdaterar sidan (F5) eller stänger fliken försvinner dina bilder och rangordning. Exportera din rangordning regelbundet!</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <input 
+                                ref={fileInputRef}
+                                type="file" 
+                                multiple 
+                                accept="image/*" 
+                                className="hidden"
+                                onChange={(e) => handleFileSelect(e.target.files)}
+                            />
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className={`min-h-screen ${darkMode ? 'bg-black' : 'bg-white'} transition-colors`}>
+                    {/* Kontrollpanel */}
+                    <div className={`sticky top-0 z-10 ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'} border-b p-4`}>
+                        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+                            <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                Judgify Local
+                            </h1>
+                            
+                            <div className="flex flex-wrap items-center gap-4">
+                                {/* Antal bilder */}
+                                <div className="flex items-center gap-2">
+                                    <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                        Visa:
+                                    </label>
+                                    {[1, 2, 3].map(num => (
+                                        <button
+                                            key={num}
+                                            onClick={() => setViewMode(num)}
+                                            className={`px-3 py-1 rounded ${
+                                                viewMode === num 
+                                                    ? 'bg-blue-500 text-white' 
+                                                    : darkMode 
+                                                        ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                                                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                            }`}
+                                        >
+                                            {num}
+                                        </button>
+                                    ))}
+                                    <button
+                                        onClick={() => setViewMode('all')}
+                                        className={`px-3 py-1 rounded ${
+                                            viewMode === 'all' 
+                                                ? 'bg-blue-500 text-white' 
+                                                : darkMode 
+                                                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                        }`}
+                                    >
+                                        Alla
+                                    </button>
+                                </div>
+
+                                {/* Mörkt läge */}
+                                <button
+                                    onClick={() => setDarkMode(!darkMode)}
+                                    className={`px-3 py-1 rounded ${
+                                        darkMode 
+                                            ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    }`}
+                                >
+                                    {darkMode ? '☀️ Ljus' : '🌙 Mörk'}
+                                </button>
+
+                                {/* Export */}
+                                <button
+                                    onClick={exportOrder}
+                                    className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 font-medium"
+                                >
+                                    📥 Exportera
+                                </button>
+
+                                {/* Lägg till fler */}
+                                <button
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className={`px-4 py-2 rounded font-medium ${
+                                        darkMode 
+                                            ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    }`}
+                                >
+                                    ➕ Lägg till
+                                </button>
+
+                                {/* Rensa */}
+                                <button
+                                    onClick={clearAll}
+                                    className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 font-medium"
+                                >
+                                    🗑️ Rensa
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Huvudvy */}
+                    <div className="w-full p-8">
+                        <div 
+                            className={`grid gap-4 ${getGridCols()} ${viewMode === 'all' ? 'overflow-y-auto' : ''}`} 
+                            style={viewMode === 'all' 
+                                ? { maxHeight: 'calc(100vh - 250px)' }
+                                : { height: 'calc(100vh - 250px)' }
+                            }
+                        >
+                            {mainViewImages.map(({ image, index: actualIndex }) => {
+                                const isDraggableInMainView = viewMode === 'all';
+                                return (
+                                    <div
+                                        key={image.id}
+                                        draggable={isDraggableInMainView}
+                                        onDragStart={isDraggableInMainView ? () => handleDragStart(actualIndex) : undefined}
+                                        onDragEnd={isDraggableInMainView ? handleDragEnd : undefined}
+                                        onDragOver={isDraggableInMainView ? (e) => handleDragOverImage(e, actualIndex) : undefined}
+                                        className={`relative ${isDraggableInMainView ? 'cursor-move' : ''} rounded-lg overflow-hidden ${
+                                            draggedIndex === actualIndex ? 'opacity-50' : ''
+                                        } ${actualIndex === selectedIndex && viewMode === 'all' ? 'ring-4 ring-blue-500' : ''} ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} shadow-lg hover:shadow-xl transition-shadow flex items-center justify-center ${
+                                            viewMode === 'all' ? 'aspect-[4/3]' : ''
+                                        }`}
+                                    >
+                                        <img 
+                                            src={image.url} 
+                                            alt={image.name}
+                                            className="max-w-full max-h-full object-contain cursor-pointer"
+                                            onClick={() => {
+                                                if (viewMode === 'all') {
+                                                    setSelectedIndex(actualIndex);
+                                                } else {
+                                                    setFullscreenImage(image.id);
+                                                }
+                                            }}
+                                        />
+                                        <div className={`absolute top-2 left-2 ${
+                                            darkMode ? 'bg-black/70' : 'bg-white/70'
+                                        } px-3 py-1 rounded text-sm font-bold`}>
+                                            #{actualIndex + 1}
+                                        </div>
+                                        {viewMode === 'all' && (
+                                            <div className={`absolute bottom-0 left-0 right-0 ${
+                                                darkMode ? 'bg-black/70' : 'bg-white/70'
+                                            } p-1 text-xs truncate`}>
+                                                {image.name}
+                                            </div>
+                                        )}
+                                        {viewMode !== 'all' && (
+                                            <div className={`absolute bottom-0 left-0 right-0 ${
+                                                darkMode ? 'bg-black/70' : 'bg-white/70'
+                                            } p-2 text-sm truncate`}>
+                                                {image.name}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Miniatyrremsa längst ner */}
+                    <div className={`fixed bottom-0 left-0 right-0 ${
+                        darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
+                    } border-t p-4 overflow-x-auto`}>
+                        <div className="flex gap-2 max-w-7xl mx-auto">
+                            {displayImages.map((image, index) => {
+                                const actualIndex = bestDirection === 'right' ? images.length - 1 - index : index;
+                                const isSelected = actualIndex === selectedIndex;
+                                return (
+                                    <div
+                                        key={image.id}
+                                        draggable
+                                        onDragStart={() => handleDragStart(actualIndex)}
+                                        onDragEnd={handleDragEnd}
+                                        onDragOver={(e) => handleDragOverImage(e, actualIndex)}
+                                        onClick={() => setSelectedIndex(actualIndex)}
+                                        className={`relative flex-shrink-0 w-20 h-20 rounded cursor-pointer ${
+                                            draggedIndex === actualIndex ? 'opacity-50' : ''
+                                        } ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} ${
+                                            isSelected ? 'ring-4 ring-blue-500' : ''
+                                        }`}
+                                    >
+                                        <img 
+                                            src={image.url} 
+                                            alt={image.name}
+                                            className="w-full h-full object-cover rounded"
+                                        />
+                                        <div className={`absolute top-0 left-0 ${
+                                            isSelected ? 'bg-blue-500' : 'bg-gray-500'
+                                        } text-white text-xs px-1 rounded`}>
+                                            {actualIndex + 1}
+                                        </div>
+                                        <button
+                                            onClick={(e) => removeImage(image.id, e)}
+                                            className="absolute top-0 right-0 bg-red-500 hover:bg-red-600 text-white text-xs w-5 h-5 rounded-bl flex items-center justify-center font-bold"
+                                            title="Ta bort bild"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Fullskärmsvisning */}
+                    {fullscreenImage && (
+                        <div 
+                            className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-8"
+                            onClick={() => setFullscreenImage(null)}
+                        >
+                            <button 
+                                className="absolute top-4 right-4 text-white text-4xl hover:text-gray-300"
+                                onClick={() => setFullscreenImage(null)}
+                            >
+                                ×
+                            </button>
+                            <img 
+                                src={images.find(img => img.id === fullscreenImage)?.url}
+                                alt=""
+                                className="max-w-full max-h-full object-contain"
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                            <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 text-white text-center">
+                                <div className="text-sm mb-2">
+                                    Använd piltangenter för att navigera • ESC för att stänga
+                                </div>
+                                <div className="text-lg font-medium">
+                                    {images.find(img => img.id === fullscreenImage)?.name}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <input 
+                        ref={fileInputRef}
+                        type="file" 
+                        multiple 
+                        accept="image/*" 
+                        className="hidden"
+                        onChange={(e) => handleFileSelect(e.target.files)}
+                    />
+
+                    {/* Padding för miniatyrremsan */}
+                    <div className="h-32"></div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<Judgify />, document.getElementById('root'));
+    </script>
+</body>
+</html>
