@@ -14,7 +14,7 @@
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
-        const VERSION = "1.0.0";
+        const VERSION = "1.1.0";
 
         function Judgify() {
             const [images, setImages] = useState([]);
@@ -24,6 +24,7 @@
             const [fullscreenImage, setFullscreenImage] = useState(null);
             const [draggedIndex, setDraggedIndex] = useState(null);
             const [selectedIndex, setSelectedIndex] = useState(0); // Vald bild i filmremsan
+            const [showFilenames, setShowFilenames] = useState(false); // Visa filnamn
             const fileInputRef = useRef(null);
 
             // Ladda sparade bilder från sessionStorage vid start
@@ -42,6 +43,11 @@
                 if (savedDirection) {
                     setBestDirection(savedDirection);
                 }
+                
+                const savedShowFilenames = sessionStorage.getItem('judgify-show-filenames');
+                if (savedShowFilenames !== null) {
+                    setShowFilenames(savedShowFilenames === 'true');
+                }
             }, []);
 
             // Spara bilder till sessionStorage när de ändras
@@ -57,6 +63,11 @@
             useEffect(() => {
                 sessionStorage.setItem('judgify-best-direction', bestDirection);
             }, [bestDirection]);
+            
+            // Spara showFilenames till sessionStorage när det ändras
+            useEffect(() => {
+                sessionStorage.setItem('judgify-show-filenames', showFilenames);
+            }, [showFilenames]);
             
             // Varna användaren innan de lämnar sidan om det finns bilder
             useEffect(() => {
@@ -371,6 +382,7 @@
                             </div>
                             
                             <div className="flex flex-wrap items-center gap-4">
+                                {/* Antal bilder */}
                                 <div className="flex items-center gap-2">
                                     <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                         Visa:
@@ -404,6 +416,7 @@
                                     </button>
                                 </div>
 
+                                {/* Mörkt läge */}
                                 <button
                                     onClick={() => setDarkMode(!darkMode)}
                                     className={`px-3 py-1 rounded ${
@@ -415,6 +428,22 @@
                                     {darkMode ? '☀️ Ljus' : '🌙 Mörk'}
                                 </button>
 
+                                {/* Visa filnamn */}
+                                <button
+                                    onClick={() => setShowFilenames(!showFilenames)}
+                                    className={`px-3 py-1 rounded ${
+                                        showFilenames
+                                            ? 'bg-blue-500 text-white'
+                                            : darkMode 
+                                                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    }`}
+                                    title={showFilenames ? 'Dölj filnamn' : 'Visa filnamn'}
+                                >
+                                    📝 Namn
+                                </button>
+
+                                {/* Export */}
                                 <button
                                     onClick={exportOrder}
                                     className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 font-medium"
@@ -422,6 +451,7 @@
                                     📥 Exportera
                                 </button>
 
+                                {/* Lägg till fler */}
                                 <button
                                     onClick={() => fileInputRef.current?.click()}
                                     className={`px-4 py-2 rounded font-medium ${
@@ -433,6 +463,7 @@
                                     ➕ Lägg till
                                 </button>
 
+                                {/* Rensa */}
                                 <button
                                     onClick={clearAll}
                                     className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 font-medium"
@@ -484,14 +515,14 @@
                                         } px-3 py-1 rounded text-sm font-bold`}>
                                             #{actualIndex + 1}
                                         </div>
-                                        {viewMode === 'all' && (
+                                        {showFilenames && viewMode === 'all' && (
                                             <div className={`absolute bottom-0 left-0 right-0 ${
                                                 darkMode ? 'bg-black/70' : 'bg-white/70'
                                             } p-1 text-xs truncate`}>
                                                 {image.name}
                                             </div>
                                         )}
-                                        {viewMode !== 'all' && (
+                                        {showFilenames && viewMode !== 'all' && (
                                             <div className={`absolute bottom-0 left-0 right-0 ${
                                                 darkMode ? 'bg-black/70' : 'bg-white/70'
                                             } p-2 text-sm truncate`}>
