@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="sv">
 <head>
@@ -15,6 +14,7 @@
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
+        const VERSION = "1.0.0";
 
         function Judgify() {
             const [images, setImages] = useState([]);
@@ -279,9 +279,12 @@
                 return (
                     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-8">
                         <div className="max-w-2xl w-full">
-                            <h1 className="text-4xl font-bold text-center mb-8 text-gray-800">
-                                Judgify Local
-                            </h1>
+                            <div className="flex items-center justify-between mb-8">
+                                <h1 className="text-4xl font-bold text-gray-800">
+                                    Judgify Local
+                                </h1>
+                                <span className="text-sm text-gray-400">v{VERSION}</span>
+                            </div>
                             
                             {/* Välj bäst-riktning */}
                             <div className="mb-6 text-center">
@@ -360,12 +363,14 @@
                     {/* Kontrollpanel */}
                     <div className={`sticky top-0 z-10 ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'} border-b p-4`}>
                         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-                            <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                                Judgify Local
-                            </h1>
+                            <div className="flex items-center gap-3">
+                                <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                    Judgify Local
+                                </h1>
+                                <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>v{VERSION}</span>
+                            </div>
                             
                             <div className="flex flex-wrap items-center gap-4">
-                                {/* Antal bilder */}
                                 <div className="flex items-center gap-2">
                                     <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                         Visa:
@@ -399,7 +404,6 @@
                                     </button>
                                 </div>
 
-                                {/* Mörkt läge */}
                                 <button
                                     onClick={() => setDarkMode(!darkMode)}
                                     className={`px-3 py-1 rounded ${
@@ -411,7 +415,6 @@
                                     {darkMode ? '☀️ Ljus' : '🌙 Mörk'}
                                 </button>
 
-                                {/* Export */}
                                 <button
                                     onClick={exportOrder}
                                     className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 font-medium"
@@ -419,7 +422,6 @@
                                     📥 Exportera
                                 </button>
 
-                                {/* Lägg till fler */}
                                 <button
                                     onClick={() => fileInputRef.current?.click()}
                                     className={`px-4 py-2 rounded font-medium ${
@@ -431,7 +433,6 @@
                                     ➕ Lägg till
                                 </button>
 
-                                {/* Rensa */}
                                 <button
                                     onClick={clearAll}
                                     className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 font-medium"
